@@ -1,878 +1,955 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
+using System.IO.Ports;
 using System.Threading;
 using System.Threading.Tasks;
-using System.IO.Ports;
 
 namespace STBootLib
 {
+    /// <summary>
+    /// Boot.
+    /// </summary>
     public class STBoot : IDisposable
     {
-        /* serial port */
-        SerialPort sp;
-        /* command mutex */
-        SemaphoreSlim sem;
-        /* list of supported commands */
-        List<STCmds> Commands;
+        // command mutex
+        private readonly SemaphoreSlim sem;
 
+        private SerialPort serialPort;
 
-        /* bootloader version */
-        public string Version;
-        /* product id */
-        public ushort ProductID;
-        
-
-        /* constructor */
+        /// <summary>
+        /// Initializes a new instance of the <see cref="STBoot"/> class.
+        /// </summary>
         public STBoot()
         {
-            Commands = new List<STCmds>();
-            /* initialize mutex */
-            sem = new SemaphoreSlim(1);
+            this.Commands = new List<STCmds>();
+            this.sem = new SemaphoreSlim(1);
         }
 
-        /* destructor */
+        /// <summary>
+        /// Finalizes an instance of the <see cref="STBoot"/> class.
+        /// </summary>
         ~STBoot()
         {
-            /* dispose of serial port */
-            Dispose();
+            this.Dispose();
         }
 
-        /* dispose implementation */
+        /// <summary>
+        /// Gets the list of supported commands.
+        /// </summary>
+        public List<STCmds> Commands { get; private set; }
+
+        /// <summary>
+        /// Gets the version.
+        /// </summary>
+        public string Version { get; private set; }
+
+        /// <summary>
+        /// Gets the product id.
+        /// </summary>
+        public ushort ProductId { get; private set; }
+
+        /// <inheritdoc />
         public void Dispose()
         {
-            /* close serial port */
-            Close();
+            // close serial port
+            this.Close();
         }
 
-        /* open serial port */
+        /// <summary>
+        /// Open serial port.
+        /// </summary>
+        /// <param name="portName">The port name.</param>
+        /// <param name="baudRate">The baud rate.</param>
         public void Open(string portName, uint baudRate)
         {
-            /* initialize serial port */
-            sp = new SerialPort(portName, (int)baudRate, Parity.Even, 8);
-            /* open serial port */
-            sp.Open();
+            this.serialPort = new SerialPort(portName, (int)baudRate, Parity.Even, 8);
+            this.serialPort.Open();
 
-            /* discard buffers */
-            sp.DiscardInBuffer();
-            sp.DiscardOutBuffer();
+            this.serialPort.DiscardInBuffer();
+            this.serialPort.DiscardOutBuffer();
         }
 
-        /* close */
+        /// <summary>
+        /// Close serial port.
+        /// </summary>
         public void Close()
         {
-            /* close permitted? */
-            if (sp != null && sp.IsOpen)
-                sp.Close();
+            // close permitted?
+            if (this.serialPort != null && this.serialPort.IsOpen)
+            {
+                this.serialPort.Close();
+            }
         }
 
-        /* initialize communication */
+        /// <summary>
+        /// Initialize communication.
+        /// </summary>
+        /// <returns>The async task.</returns>
         public async Task Initialize()
         {
-            /* perform autobauding */
-            await Init();
-            /* get version and command list */
-            await Get();
+            // perform autobauding
+            await this.Init();
 
-            /* no support for get id? */
-            if (!Commands.Contains(STCmds.GET_ID)) {
-                /* throw an exception */
+            // get version and command list
+            await this.Get();
+
+            // no support for get id?
+            if (!this.Commands.Contains(STCmds.GET_ID))
+            {
                 throw new STBootException("Command not supported");
             }
 
-            /* get product id */
-            await GetID();
+            await this.GetId();
         }
 
-        /* unprotect memory */
+        /// <summary>
+        /// unprotect memory.
+        /// </summary>
+        /// <returns>The async task.</returns>
         public async Task Unprotect()
         {
-            /* no support for unprotect? */
-            if (!Commands.Contains(STCmds.WR_UNPROTECT))
+            // no support for unprotect?
+            if (!this.Commands.Contains(STCmds.WR_UNPROTECT))
+            {
                 throw new STBootException("Command not supported");
-
-            /* no support for unprotect? */
-            if (!Commands.Contains(STCmds.RD_UNPROTECT))
-                throw new STBootException("Command not supported");
-
-            await ReadUnprotect();
-            await WriteUnprotect();
-        }
-
-        /* read memory */
-        public async Task ReadMemory(uint address, byte[] buf, int offset, 
-            int size, IProgress<int> p, CancellationToken ct)
-        {
-            /* number of bytes read */
-            int bread = 0;
-            /* no support for read? */
-            if (!Commands.Contains(STCmds.READ))
-                throw new STBootException("Command not supported");
-
-            /* data is read in chunks */
-            while (size > 0 && !ct.IsCancellationRequested) {
-                /* chunk size */
-                int csize = Math.Min(size, 256);
-                /* read a single chunk */
-                await Read(address, buf, offset, csize);
-         
-                /* update iterators */
-                size -= csize; offset += csize; address += (uint)csize; 
-                /* update number of bytes read */
-                bread += csize;
-
-                /* report progress */
-                if (p != null)
-                    p.Report(bread);
             }
 
-            /* throw exception if operation was cancelled */
+            // no support for unprotect?
+            if (!this.Commands.Contains(STCmds.RD_UNPROTECT))
+            {
+                throw new STBootException("Command not supported");
+            }
+
+            await this.ReadUnprotect();
+            await this.WriteUnprotect();
+        }
+
+        /// <summary>
+        /// Read memory.
+        /// </summary>
+        /// <param name="address">The address.</param>
+        /// <param name="buf">The buffer.</param>
+        /// <param name="offset">The offset.</param>
+        /// <param name="size">The size.</param>
+        /// <param name="p">The progress.</param>
+        /// <param name="ct">The cancellation token.</param>
+        /// <returns>The async task.</returns>
+        public async Task ReadMemory(
+            uint address,
+            byte[] buf,
+            int offset,
+            int size,
+            IProgress<int> p,
+            CancellationToken ct)
+        {
+            // no support for read?
+            if (!this.Commands.Contains(STCmds.READ))
+            {
+                throw new STBootException("Command not supported");
+            }
+
+            // data is read in chunks
+            var bytesRead = 0;
+            while (size > 0 && !ct.IsCancellationRequested)
+            {
+                var chunkSize = Math.Min(size, 256);
+
+                // read a single chunk
+                await this.Read(address, buf, offset, chunkSize);
+
+                // update iterators
+                size -= chunkSize;
+                offset += chunkSize;
+                address += (uint)chunkSize;
+
+                // update number of bytes read
+                bytesRead += chunkSize;
+
+                p?.Report(bytesRead);
+            }
+
             if (ct.IsCancellationRequested)
+            {
                 throw new OperationCanceledException("Read cancelled");
+            }
         }
 
-        /* write memory */
-        public async Task WriteMemory(uint address, byte[] buf, int offset,
-            int size, IProgress<STBootProgress> p, CancellationToken ct)
+        /// <summary>
+        /// Write memory.
+        /// </summary>
+        /// <param name="address">The address.</param>
+        /// <param name="buf">The buffer.</param>
+        /// <param name="offset">The offset.</param>
+        /// <param name="size">The size.</param>
+        /// <param name="p">The progress.</param>
+        /// <param name="ct">The cancellation token.</param>
+        /// <returns>The async task.</returns>
+        public async Task WriteMemory(
+            uint address,
+            byte[] buf,
+            int offset,
+            int size,
+            IProgress<STBootProgress> p,
+            CancellationToken ct)
         {
-            /* number of bytes written */
-            int bwritten = 0, btotal = size;
-
-            /* no support for read? */
-            if (!Commands.Contains(STCmds.WRITE))
+            // no support for read?
+            if (!this.Commands.Contains(STCmds.WRITE))
+            {
                 throw new STBootException("Command not supported");
-
-            /* data is read in chunks */
-            while (size > 0 && !ct.IsCancellationRequested) {
-                /* chunk size */
-                int csize = Math.Min(size, 256);
-                /* read a single chunk */
-                await Write(address, buf, offset, csize);
-
-                /* update iterators */
-                size -= csize; offset += csize; address += (uint)csize;
-                /* update number of bytes read */
-                bwritten += csize;
-
-                /* report progress */
-                if (p != null)
-                    p.Report(new STBootProgress(bwritten, btotal));
             }
 
-            /* throw exception if operation was cancelled */
+            // data is read in chunks
+            var bytesWritten = 0;
+            var bytesTotal = size;
+            while (size > 0 && !ct.IsCancellationRequested)
+            {
+                var chunkSize = Math.Min(size, 256);
+
+                // read a single chunk
+                await this.Write(address, buf, offset, chunkSize);
+
+                // update iterators
+                size -= chunkSize;
+                offset += chunkSize;
+                address += (uint)chunkSize;
+                bytesWritten += chunkSize;
+
+                p?.Report(new STBootProgress(bytesWritten, bytesTotal));
+            }
+
             if (ct.IsCancellationRequested)
+            {
                 throw new OperationCanceledException("Write cancelled");
+            }
         }
 
-        /* erase page */
+        /// <summary>
+        /// Erase page.
+        /// </summary>
+        /// <param name="pageNumber">The page number.</param>
+        /// <returns>The async task.</returns>
         public async Task ErasePage(uint pageNumber)
         {
-            /* 'classic' erase operation supported? */
-            if (Commands.Contains(STCmds.ERASE)) {
-                await Erase(pageNumber);
-            /* 'extended' erase operation supported? */
-            } else if (Commands.Contains(STCmds.EXT_ERASE)) {
-                await ExtendedErase(pageNumber);
-            /* no operation supported */
-            } else {
+            // 'classic' erase operation supported?
+            if (this.Commands.Contains(STCmds.ERASE))
+            {
+                await this.Erase(pageNumber);
+            }
+
+            // 'extended' erase operation supported?
+            else if (this.Commands.Contains(STCmds.EXT_ERASE))
+            {
+                await this.ExtendedErase(pageNumber);
+            }
+
+            // no operation supported
+            else
+            {
                 throw new STBootException("Command not supported");
             }
         }
 
-        /* perform global erase */
+        /// <summary>
+        /// Perform global erase.
+        /// </summary>
+        /// <returns>The async task.</returns>
         public async Task GlobalErase()
         {
-            /* 'classic' erase operation supported? */
-            if (Commands.Contains(STCmds.ERASE)) {
-                await EraseSpecial(STEraseMode.GLOBAL);
-                /* 'extended' erase operation supported? */
-            } else if (Commands.Contains(STCmds.EXT_ERASE)) {
-                await ExtendedEraseSpecial(STExtendedEraseMode.GLOBAL);
-                /* no operation supported */
-            } else {
+            // 'classic' erase operation supported?
+            if (this.Commands.Contains(STCmds.ERASE))
+            {
+                await this.EraseSpecial(STEraseMode.GLOBAL);
+            }
+
+            // 'extended' erase operation supported?
+            else if (this.Commands.Contains(STCmds.EXT_ERASE))
+            {
+                await this.ExtendedEraseSpecial(STExtendedEraseMode.GLOBAL);
+            }
+
+            // no operation supported
+            else
+            {
                 throw new STBootException("Command not supported");
             }
         }
 
-        /* jump to user code */
+        /// <summary>
+        /// Jump to user code.
+        /// </summary>
+        /// <param name="address">The address.</param>
+        /// <returns>The async task.</returns>
         public async Task Jump(uint address)
         {
-            /* no support for go? */
-            if (!Commands.Contains(STCmds.GO))
+            // no support for go?
+            if (!this.Commands.Contains(STCmds.GO))
+            {
                 throw new STBootException("Command not supported");
+            }
 
-            /* go! */
-            await Go(address);
+            await this.Go(address);
         }
 
-        /* init */
         private async Task Init()
         {
-            /* command word */
+            // command word
             var tx = new byte[1];
-            /* response code */
+
+            // response code
             var ack = new byte[1];
 
-            /* store code */
+            // store code
             tx[0] = (byte)STCmds.INIT;
 
-            /* wait for command sender to finish its job with previous 
-             * command */
-            await sem.WaitAsync();
+            // wait for command sender to finish its job with previous command
+            await this.sem.WaitAsync();
 
-            /* try to send command and wait for response */
-            try {
-                /* send bytes */
-                await SerialWrite(tx, 0, tx.Length);
+            // try to send command and wait for response
+            try
+            {
+                await this.SerialWrite(tx, 0, tx.Length);
+                await this.SerialRead(ack, 0, 1);
 
-                /* wait for response code */
-                await SerialRead(ack, 0, 1);
-               /* check response code */
                 if (ack[0] != (byte)STResps.ACK)
+                {
                     throw new STBootException("Command Rejected");
-            /* error during send */
-            } catch (Exception) {
-                /* release semaphore */
-                sem.Release();
-                /* re-throw */
+                }
+            }
+            catch (Exception)
+            {
+                this.sem.Release();
                 throw;
             }
 
-            /* release semaphore */
-            sem.Release();
+            this.sem.Release();
         }
 
-        /* get command */
         private async Task Get()
         {
-            /* command word */
+            // command word
             var tx = new byte[2];
-            /* temporary storage for response bytes */
+
+            // temporary storage for response bytes
             var tmp = new byte[1];
-            /* numbe or response bytes */
+
+            // number or response bytes
             int nbytes;
-            /* rx buffer */
+
+            // rx buffer
             byte[] rx;
-           
-            /* store code */
+
+            // store code
             tx[0] = (byte)STCmds.GET;
-            /* set checksum */
-            tx[1] = ComputeChecksum(tx, 0, 1);
 
-            /* wait for command sender to finish its job with previous 
-             * command */
-            await sem.WaitAsync();
+            // set checksum
+            tx[1] = this.ComputeChecksum(tx, 0, 1);
 
-            /* try to send command and wait for response */
-            try {
-                /* send bytes */
-                await SerialWrite(tx, 0, tx.Length);
+            // wait for command sender to finish its job with previous command
+            await this.sem.WaitAsync();
 
-                /* wait for response code */
-                await SerialRead(tmp, 0, 1);
-                /* check response code */
-                if (tmp[0] != (byte)STResps.ACK) 
+            // try to send command and wait for response
+            try
+            {
+                await this.SerialWrite(tx, 0, tx.Length);
+
+                await this.SerialRead(tmp, 0, 1);
+
+                if (tmp[0] != (byte)STResps.ACK)
+                {
                     throw new STBootException("Command Rejected");
+                }
 
-                /* wait for number of bytes */
-                await SerialRead(tmp, 0, 1);
-                /* assign number of bytes that will follow (add for acks) */
+                // wait for number of bytes
+                await this.SerialRead(tmp, 0, 1);
+
+                // assign number of bytes that will follow (add for acks)
                 nbytes = tmp[0] + 2;
-                /* nbytes must be equal to 13 for stm32 products */
-                if (nbytes != 13)
-                    throw new STBootException("Invalid length");
 
-                /* prepare buffer */
+                // nbytes must be equal to 13 for stm32 products
+                if (nbytes != 13)
+                {
+                    throw new STBootException("Invalid length");
+                }
+
                 rx = new byte[nbytes];
-                /* receive response */
-                await SerialRead(rx, 0, rx.Length);
-            /* oops, something baaad happened! */
-            } catch (Exception) {
-                /* release semaphore */
-                sem.Release();
-                /* re-throw */
+                await this.SerialRead(rx, 0, rx.Length);
+            }
+            catch (Exception)
+            {
+                this.sem.Release();
                 throw;
             }
 
-            /* store version information */
-            Version = (rx[0] >> 4).ToString() + "." + 
-                (rx[0] & 0xf).ToString();
+            // store version information
+            this.Version = (rx[0] >> 4).ToString() + "." +
+                           (rx[0] & 0xf).ToString();
 
-            /* initialize command list */
-            Commands = new List<STCmds>();
-            /* add all commands */
-            for (int i = 1; i < nbytes - 1; i++)
-                Commands.Add((STCmds)rx[i]);
+            this.Commands = new List<STCmds>();
+            for (var i = 1; i < nbytes - 1; i++)
+            {
+                this.Commands.Add((STCmds)rx[i]);
+            }
 
-            /* release semaphore */
-            sem.Release();
+            this.sem.Release();
         }
 
-        /* get id command */
-        private async Task GetID()
+        private async Task GetId()
         {
-            /* command word */
+            // command word
             var tx = new byte[2];
-            /* temporary storage for response bytes */
+
+            // temporary storage for response bytes
             var tmp = new byte[1];
-            /* numbe or response bytes */
+
+            // number or response bytes
             int nbytes;
-            /* rx buffer */
+
+            // rx buffer
             byte[] rx;
 
-            /* store code */
+            // store code
             tx[0] = (byte)STCmds.GET_ID;
-            /* set checksum */
-            tx[1] = ComputeChecksum(tx, 0, 1);
 
-            /* try to send command and wait for response */
-            try {
-                /* send bytes */
-                await SerialWrite(tx, 0, tx.Length);
+            // set checksum
+            tx[1] = this.ComputeChecksum(tx, 0, 1);
 
-                /* wait for response code */
-                await SerialRead(tmp, 0, 1);
-                /* check response code */
+            // try to send command and wait for response
+            try
+            {
+                await this.SerialWrite(tx, 0, tx.Length);
+
+                await this.SerialRead(tmp, 0, 1);
+
                 if (tmp[0] != (byte)STResps.ACK)
+                {
                     throw new STBootException("Command Rejected");
+                }
 
-                /* wait for number of bytes */
-                await SerialRead(tmp, 0, 1);
-                /* assign number of bytes that will follow (add for acks) */
+                // wait for number of bytes
+                await this.SerialRead(tmp, 0, 1);
+
+                // assign number of bytes that will follow (add for acks)
                 nbytes = tmp[0] + 2;
-                /* nbytes must be equal to 3 for stm32 products */
-                if (nbytes != 3)
-                    throw new STBootException("Invalid length");
 
-                /* prepare buffer */
+                // nbytes must be equal to 3 for stm32 products
+                if (nbytes != 3)
+                {
+                    throw new STBootException("Invalid length");
+                }
+
                 rx = new byte[nbytes];
-                /* receive response */
-                await SerialRead(rx, 0, rx.Length);
-            /* oops, something baaad happened! */
-            } catch (Exception) {
-                /* release semaphore */
-                sem.Release();
-                /* re-throw */
+                await this.SerialRead(rx, 0, rx.Length);
+            }
+            catch (Exception)
+            {
+                this.sem.Release();
                 throw;
             }
 
-            /* store product id */
-            ProductID = (ushort)(rx[0] << 8 | rx[1]);
+            // store product id
+            this.ProductId = (ushort)(rx[0] << 8 | rx[1]);
 
-            /* release semaphore */
-            sem.Release();
+            this.sem.Release();
         }
 
-        /* read command */
         private async Task Read(uint address, byte[] buf, int offset, int length)
         {
-            /* command word */
+            // command word
             var tx = new byte[9];
-            /* temporary storage for response bytes */
+
+            // temporary storage for response bytes
             var tmp = new byte[1];
 
-            /* command code */
+            // command code
             tx[0] = (byte)STCmds.READ;
-            /* checksum */
-            tx[1] = ComputeChecksum(tx, 0, 1);
 
-            /* store address */
+            // checksum
+            tx[1] = this.ComputeChecksum(tx, 0, 1);
+
+            // store address
             tx[2] = (byte)((address >> 24) & 0xff);
             tx[3] = (byte)((address >> 16) & 0xff);
             tx[4] = (byte)((address >> 8) & 0xff);
             tx[5] = (byte)(address & 0xff);
-            /* address checksum (needs to be not negated. why? because ST! 
-             * that's why. */
-            tx[6] = (byte)~ComputeChecksum(tx, 2, 4);
 
-            /* store number of bytes */
+            // address checksum (needs to be not negated. why? because ST! that's why.
+            tx[6] = (byte)~this.ComputeChecksum(tx, 2, 4);
+
+            // store number of bytes
             tx[7] = (byte)(length - 1);
-            /* size checksum */
-            tx[8] = ComputeChecksum(tx, 7, 1);
 
-            /* try to send command and wait for response */
-            try {
-                /* send bytes */
-                await SerialWrite(tx, 0, 2);
-                /* wait for response code */
-                await SerialRead(tmp, 0, 1);
-                /* check response code */
+            // size checksum
+            tx[8] = this.ComputeChecksum(tx, 7, 1);
+
+            // try to send command and wait for response
+            try
+            {
+                await this.SerialWrite(tx, 0, 2);
+                await this.SerialRead(tmp, 0, 1);
                 if (tmp[0] != (byte)STResps.ACK)
+                {
                     throw new STBootException("Command Rejected");
+                }
 
-                /* send address */
-                await SerialWrite(tx, 2, 5);
-                /* wait for response code */
-                await SerialRead(tmp, 0, 1);
-                /* check response code */
+                // send address
+                await this.SerialWrite(tx, 2, 5);
+                await this.SerialRead(tmp, 0, 1);
                 if (tmp[0] != (byte)STResps.ACK)
+                {
                     throw new STBootException("Address Rejected");
+                }
 
-                /* send address */
-                await SerialWrite(tx, 7, 2);
-                /* wait for response code */
-                await SerialRead(tmp, 0, 1);
-                /* check response code */
+                // send address
+                await this.SerialWrite(tx, 7, 2);
+                await this.SerialRead(tmp, 0, 1);
                 if (tmp[0] != (byte)STResps.ACK)
+                {
                     throw new STBootException("Size Rejected");
+                }
 
-                /* receive response */
-                await SerialRead(buf, offset, length);
-                /* oops, something baaad happened! */
-            } catch (Exception) {
-                /* release semaphore */
-                sem.Release();
-                /* re-throw */
+                await this.SerialRead(buf, offset, length);
+            }
+            catch (Exception)
+            {
+                this.sem.Release();
                 throw;
             }
 
-            /* release semaphore */
-            sem.Release();
+            this.sem.Release();
         }
 
-        /* go command */
         private async Task Go(uint address)
         {
-            /* command word */
+            // command word
             var tx = new byte[7];
-            /* temporary storage for response bytes */
+
+            // temporary storage for response bytes
             var tmp = new byte[1];
 
-            /* command code */
+            // command code
             tx[0] = (byte)STCmds.GO;
-            /* checksum */
-            tx[1] = ComputeChecksum(tx, 0, 1);
 
-            /* store address */
+            // checksum
+            tx[1] = this.ComputeChecksum(tx, 0, 1);
+
+            // store address
             tx[2] = (byte)((address >> 24) & 0xff);
             tx[3] = (byte)((address >> 16) & 0xff);
             tx[4] = (byte)((address >> 8) & 0xff);
             tx[5] = (byte)(address & 0xff);
-            /* address checksum (needs to be not negated. why? because ST! 
-             * that's why. */
-            tx[6] = (byte)~ComputeChecksum(tx, 2, 4);
 
-            /* try to send command and wait for response */
-            try {
-                /* send bytes */
-                await SerialWrite(tx, 0, 2);
-                /* wait for response code */
-                await SerialRead(tmp, 0, 1);
-                /* check response code */
+            // address checksum (needs to be not negated. why? because ST! that's why.
+            tx[6] = (byte)~this.ComputeChecksum(tx, 2, 4);
+
+            // try to send command and wait for response
+            try
+            {
+                await this.SerialWrite(tx, 0, 2);
+                await this.SerialRead(tmp, 0, 1);
                 if (tmp[0] != (byte)STResps.ACK)
+                {
                     throw new STBootException("Command Rejected");
+                }
 
-                /* send address */
-                await SerialWrite(tx, 2, 5);
-                /* wait for response code */
-                await SerialRead(tmp, 0, 1);
-                /* check response code */
+                await this.SerialWrite(tx, 2, 5);
+                await this.SerialRead(tmp, 0, 1);
                 if (tmp[0] != (byte)STResps.ACK)
+                {
                     throw new STBootException("Address Rejected");
-                /* oops, something baaad happened! */
-            } catch (Exception) {
-                /* release semaphore */
-                sem.Release();
-                /* re-throw */
+                }
+            }
+            catch (Exception)
+            {
+                this.sem.Release();
                 throw;
             }
 
-            /* release semaphore */
-            sem.Release();
+            this.sem.Release();
         }
 
-        /* write memory */
         private async Task Write(uint address, byte[] data, int offset, int length)
         {
-            /* command word */
+            // command word
             var tx = new byte[9];
-            /* temporary storage for response bytes */
+
+            // temporary storage for response bytes
             var tmp = new byte[1];
 
-            /* command code */
+            // command code
             tx[0] = (byte)STCmds.WRITE;
-            /* checksum */
-            tx[1] = ComputeChecksum(tx, 0, 1);
 
-            /* store address */
+            // checksum
+            tx[1] = this.ComputeChecksum(tx, 0, 1);
+
+            // store address
             tx[2] = (byte)((address >> 24) & 0xff);
             tx[3] = (byte)((address >> 16) & 0xff);
             tx[4] = (byte)((address >> 8) & 0xff);
             tx[5] = (byte)(address & 0xff);
-            /* address checksum (needs to be not negated. why? because ST! 
-             * that's why. */
-            tx[6] = (byte)~ComputeChecksum(tx, 2, 4);
 
-            /* number of bytes */
+            // address checksum (needs to be not negated. why? because ST! that's why.
+            tx[6] = (byte)~this.ComputeChecksum(tx, 2, 4);
+
+            // number of bytes
             tx[7] = (byte)(length - 1);
-            /* data checksum */
-            tx[8] = (byte)(~(ComputeChecksum(data, offset, length) ^ tx[7]));
 
-            /* try to send command and wait for response */
-            try {
-                /* send bytes */
-                await SerialWrite(tx, 0, 2);
-                /* wait for response code */
-                await SerialRead(tmp, 0, 1);
-                /* check response code */
+            // data checksum
+            tx[8] = (byte)(~(this.ComputeChecksum(data, offset, length) ^ tx[7]));
+
+            // try to send command and wait for response
+            try
+            {
+                await this.SerialWrite(tx, 0, 2);
+                await this.SerialRead(tmp, 0, 1);
                 if (tmp[0] != (byte)STResps.ACK)
+                {
                     throw new STBootException("Command Rejected");
+                }
 
-                /* send address */
-                await SerialWrite(tx, 2, 5);
-                /* wait for response code */
-                await SerialRead(tmp, 0, 1);
-                /* check response code */
+                await this.SerialWrite(tx, 2, 5);
+                await this.SerialRead(tmp, 0, 1);
                 if (tmp[0] != (byte)STResps.ACK)
+                {
                     throw new STBootException("Address Rejected");
+                }
 
-                /* send the number of bytes */
-                await SerialWrite(tx, 7, 1);
-                /* send data */
-                await SerialWrite(data, offset, length);
-                /* send checksum */
-                await SerialWrite(tx, 8, 1);
-                /* wait for response code */
-                await SerialRead(tmp, 0, 1);
-                /* check response code */
+                await this.SerialWrite(tx, 7, 1);
+                await this.SerialWrite(data, offset, length);
+                await this.SerialWrite(tx, 8, 1);
+                await this.SerialRead(tmp, 0, 1);
                 if (tmp[0] != (byte)STResps.ACK)
+                {
                     throw new STBootException("Data Rejected");
-
-                /* oops, something baaad happened! */
-            } catch (Exception) {
-                /* release semaphore */
-                sem.Release();
-                /* re-throw */
+                }
+            }
+            catch (Exception)
+            {
+                this.sem.Release();
                 throw;
             }
 
-            /* release semaphore */
-            sem.Release();
+            this.sem.Release();
         }
 
-        /* erase memory page */
         private async Task Erase(uint pageNumber)
         {
-            /* command word */
+            // command word
             var tx = new byte[5];
-            /* temporary storage for response bytes */
+
+            // temporary storage for response bytes
             var tmp = new byte[1];
 
-            /* command code */
+            // command code
             tx[0] = (byte)STCmds.ERASE;
-            /* checksum */
-            tx[1] = ComputeChecksum(tx, 0, 1);
 
-            /* erase single page */
+            // checksum
+            tx[1] = this.ComputeChecksum(tx, 0, 1);
+
+            // erase single page
             tx[2] = 0;
-            /* set page number */
+
+            // set page number
             tx[3] = (byte)pageNumber;
-            /* checksum */
-            tx[4] = (byte)~ComputeChecksum(tx, 2, 2);
 
-            /* try to send command and wait for response */
-            try {
-                /* send bytes */
-                await SerialWrite(tx, 0, 2);
-                /* wait for response code */
-                await SerialRead(tmp, 0, 1);
-                /* check response code */
+            // checksum
+            tx[4] = (byte)~this.ComputeChecksum(tx, 2, 2);
+
+            // try to send command and wait for response
+            try
+            {
+                await this.SerialWrite(tx, 0, 2);
+                await this.SerialRead(tmp, 0, 1);
                 if (tmp[0] != (byte)STResps.ACK)
+                {
                     throw new STBootException("Command Rejected");
+                }
 
-                /* send address */
-                await SerialWrite(tx, 2, 3);
-                /* wait for response code */
-                await SerialRead(tmp, 0, 1);
-                /* check response code */
+                await this.SerialWrite(tx, 2, 3);
+                await this.SerialRead(tmp, 0, 1);
                 if (tmp[0] != (byte)STResps.ACK)
+                {
                     throw new STBootException("Page Rejected");
-
-                /* oops, something baaad happened! */
-            } catch (Exception) {
-                /* release semaphore */
-                sem.Release();
-                /* re-throw */
+                }
+            }
+            catch (Exception)
+            {
+                this.sem.Release();
                 throw;
             }
 
-            /* release semaphore */
-            sem.Release();
+            this.sem.Release();
         }
 
-        /* erase memory page */
         private async Task EraseSpecial(STEraseMode mode)
         {
-            /* command word */
+            // command word
             var tx = new byte[4];
-            /* temporary storage for response bytes */
+
+            // temporary storage for response bytes
             var tmp = new byte[1];
 
-            /* command code */
+            // command code
             tx[0] = (byte)STCmds.ERASE;
-            /* checksum */
-            tx[1] = ComputeChecksum(tx, 0, 1);
 
-            /* erase single page */
+            // checksum
+            tx[1] = this.ComputeChecksum(tx, 0, 1);
+
+            // erase single page
             tx[2] = (byte)((int)mode);
-            /* checksum */
-            tx[3] = (byte)~ComputeChecksum(tx, 2, 2);
 
-            /* try to send command and wait for response */
-            try {
-                /* send bytes */
-                await SerialWrite(tx, 0, 2);
-                /* wait for response code */
-                await SerialRead(tmp, 0, 1);
-                /* check response code */
+            // checksum
+            tx[3] = (byte)~this.ComputeChecksum(tx, 2, 2);
+
+            // try to send command and wait for response
+            try
+            {
+                await this.SerialWrite(tx, 0, 2);
+                await this.SerialRead(tmp, 0, 1);
                 if (tmp[0] != (byte)STResps.ACK)
+                {
                     throw new STBootException("Command Rejected");
+                }
 
-                /* send address */
-                await SerialWrite(tx, 2, 2);
-                /* wait for response code */
-                await SerialRead(tmp, 0, 1);
-                /* check response code */
+                await this.SerialWrite(tx, 2, 2);
+                await this.SerialRead(tmp, 0, 1);
                 if (tmp[0] != (byte)STResps.ACK)
+                {
                     throw new STBootException("Special Code Rejected");
-
-                /* oops, something baaad happened! */
-            } catch (Exception) {
-                /* release semaphore */
-                sem.Release();
-                /* re-throw */
+                }
+            }
+            catch (Exception)
+            {
+                this.sem.Release();
                 throw;
             }
 
-            /* release semaphore */
-            sem.Release();
+            this.sem.Release();
         }
 
-        /* extended erase memory page */
         private async Task ExtendedErase(uint pageNumber)
         {
-            /* command word */
+            // command word
             var tx = new byte[7];
-            /* temporary storage for response bytes */
+
+            // temporary storage for response bytes
             var tmp = new byte[1];
 
-            /* command code */
+            // command code
             tx[0] = (byte)STCmds.EXT_ERASE;
-            /* checksum */
-            tx[1] = ComputeChecksum(tx, 0, 1);
 
-            /* erase single page */
+            // checksum
+            tx[1] = this.ComputeChecksum(tx, 0, 1);
+
+            // erase single page
             tx[2] = 0;
             tx[3] = 0;
-            /* set page number */
+
+            // set page number
             tx[4] = (byte)(pageNumber >> 8);
             tx[5] = (byte)(pageNumber >> 0);
-            /* checksum */
-            tx[6] = (byte)~ComputeChecksum(tx, 2, 5);
 
-            /* try to send command and wait for response */
-            try {
-                /* send bytes */
-                await SerialWrite(tx, 0, 2);
-                /* wait for response code */
-                await SerialRead(tmp, 0, 1);
-                /* check response code */
+            // checksum
+            tx[6] = (byte)~this.ComputeChecksum(tx, 2, 5);
+
+            // try to send command and wait for response
+            try
+            {
+                await this.SerialWrite(tx, 0, 2);
+                await this.SerialRead(tmp, 0, 1);
                 if (tmp[0] != (byte)STResps.ACK)
+                {
                     throw new STBootException("Command Rejected");
+                }
 
-                /* send address */
-                await SerialWrite(tx, 2, 5);
-                /* wait for response code. use longer timeout, erase might
-                 * take a while or two. */
-                await SerialRead(tmp, 0, 1, 3000);
-                /* check response code */
-                if (tmp[0] != (byte)STResps.ACK) 
+                await this.SerialWrite(tx, 2, 5);
+
+                // wait for response code. use longer timeout, erase might
+                // take a while or two.
+                await this.SerialRead(tmp, 0, 1, 3000);
+                if (tmp[0] != (byte)STResps.ACK)
+                {
                     throw new STBootException("Page Rejected");
-
-            /* oops, something baaad happened! */
-            } catch (Exception) {
-                /* release semaphore */
-                sem.Release();
-                /* re-throw */
+                }
+            }
+            catch (Exception)
+            {
+                this.sem.Release();
                 throw;
             }
 
-            /* release semaphore */
-            sem.Release();
+            this.sem.Release();
         }
 
-        /* extended erase memory page */
         private async Task ExtendedEraseSpecial(STExtendedEraseMode mode)
         {
-            /* command word */
+            // command word
             var tx = new byte[5];
-            /* temporary storage for response bytes */
+
+            // temporary storage for response bytes
             var tmp = new byte[1];
 
-            /* command code */
+            // command code
             tx[0] = (byte)STCmds.EXT_ERASE;
-            /* checksum */
-            tx[1] = ComputeChecksum(tx, 0, 1);
 
-            /* erase single page */
+            // checksum
+            tx[1] = this.ComputeChecksum(tx, 0, 1);
+
+            // erase single page
             tx[2] = (byte)((int)mode >> 8);
             tx[3] = (byte)((int)mode >> 0);
-            /* checksum */
-            tx[4] = (byte)~ComputeChecksum(tx, 2, 3);
 
-            /* try to send command and wait for response */
-            try {
-                /* send bytes */
-                await SerialWrite(tx, 0, 2);
-                /* wait for response code */
-                await SerialRead(tmp, 0, 1);
-                /* check response code */
+            // checksum
+            tx[4] = (byte)~this.ComputeChecksum(tx, 2, 3);
+
+            // try to send command and wait for response
+            try
+            {
+                await this.SerialWrite(tx, 0, 2);
+                await this.SerialRead(tmp, 0, 1);
                 if (tmp[0] != (byte)STResps.ACK)
+                {
                     throw new STBootException("Command Rejected");
+                }
 
-                /* send address */
-                await SerialWrite(tx, 2, 3);
-                /* wait for response code. use longer timeout, erase might
-                 * take a while or two. */
-                await SerialRead(tmp, 0, 1, 10000);
-                /* check response code */
+                await this.SerialWrite(tx, 2, 3);
+
+                // wait for response code. use longer timeout, erase might take a while or two.
+                await this.SerialRead(tmp, 0, 1, 10000);
                 if (tmp[0] != (byte)STResps.ACK)
+                {
                     throw new STBootException("Special code Rejected");
-
-                /* oops, something baaad happened! */
-            } catch (Exception) {
-                /* release semaphore */
-                sem.Release();
-                /* re-throw */
+                }
+            }
+            catch (Exception)
+            {
+                this.sem.Release();
                 throw;
             }
 
-            /* release semaphore */
-            sem.Release();
+            this.sem.Release();
         }
 
-        /* unprotect flash before writing */
         private async Task WriteUnprotect()
         {
-            /* command word */
+            // command word
             var tx = new byte[2];
-            /* temporary storage for response bytes */
+
+            // temporary storage for response bytes
             var tmp = new byte[1];
 
-            /* command code */
+            // command code
             tx[0] = (byte)STCmds.WR_UNPROTECT;
-            /* checksum */
-            tx[1] = ComputeChecksum(tx, 0, 1);
 
-            /* try to send command and wait for response */
-            try {
-                /* send bytes */
-                await SerialWrite(tx, 0, 2);
-                /* wait for response code */
-                await SerialRead(tmp, 0, 1);
-                /* check response code */
+            // checksum
+            tx[1] = this.ComputeChecksum(tx, 0, 1);
+
+            // try to send command and wait for response
+            try
+            {
+                await this.SerialWrite(tx, 0, 2);
+                await this.SerialRead(tmp, 0, 1);
                 if (tmp[0] != (byte)STResps.ACK)
+                {
                     throw new STBootException("Command Rejected");
+                }
 
-                /* wait for response code. use longer timeout, erase might
-                 * take a while or two. */
-                await SerialRead(tmp, 0, 1);
-                /* check response code */
+                // wait for response code. use longer timeout, erase might
+                // take a while or two.
+                await this.SerialRead(tmp, 0, 1);
                 if (tmp[0] != (byte)STResps.ACK)
+                {
                     throw new STBootException("Write Unprotect Rejected");
-
-                /* oops, something baaad happened! */
-            } finally {
-                /* release semaphore */
-                sem.Release();
+                }
+            }
+            finally
+            {
+                this.sem.Release();
             }
         }
 
-        /* unprotect flash before reading */
         private async Task ReadUnprotect()
         {
-            /* command word */
+            // command word
             var tx = new byte[2];
-            /* temporary storage for response bytes */
+
+            // temporary storage for response bytes
             var tmp = new byte[1];
 
-            /* command code */
+            // command code
             tx[0] = (byte)STCmds.RD_UNPROTECT;
-            /* checksum */
-            tx[1] = ComputeChecksum(tx, 0, 1);
 
-            /* try to send command and wait for response */
-            try {
-                /* send bytes */
-                await SerialWrite(tx, 0, 2);
-                /* wait for response code */
-                await SerialRead(tmp, 0, 1);
-                /* check response code */
+            // checksum
+            tx[1] = this.ComputeChecksum(tx, 0, 1);
+
+            // try to send command and wait for response
+            try
+            {
+                await this.SerialWrite(tx, 0, 2);
+                await this.SerialRead(tmp, 0, 1);
                 if (tmp[0] != (byte)STResps.ACK)
+                {
                     throw new STBootException("Command Rejected");
+                }
 
-                /* wait for response code. use longer timeout, erase might
-                 * take a while or two. */
-                await SerialRead(tmp, 0, 10000);
-                /* check response code */
+                // wait for response code. use longer timeout, erase might
+                // take a while or two.
+                await this.SerialRead(tmp, 0, 10000);
                 if (tmp[0] != (byte)STResps.ACK)
+                {
                     throw new STBootException("Write Unprotect Rejected");
-
-                /* oops, something baaad happened! */
-            } finally {
-                /* release semaphore */
-                sem.Release();
+                }
+            }
+            finally
+            {
+                this.sem.Release();
             }
         }
 
-        /* compute checksum */
         private byte ComputeChecksum(byte[] data, int offset, int count)
         {
-            /* initial value */
             byte xor = 0xff;
-            /* compute */
-            for (int i = offset; i < count + offset; i++)
-                xor ^= data[i];
 
-            /* return value */
+            for (var i = offset; i < count + offset; i++)
+            {
+                xor ^= data[i];
+            }
+
             return xor;
         }
 
-        /* write to serial port */
         private async Task SerialWrite(byte[] data, int offset, int count)
         {
-            /* shorter name */
-            var bs = sp.BaseStream;
-
-            /* write operation */
-            await bs.WriteAsync(data, offset, count);
+            await this.serialPort.BaseStream.WriteAsync(data, offset, count);
         }
 
-        /* standard read with timeout equal to 1s */
+        /// <summary>
+        /// Standard read with timeout equal to 1s.
+        /// </summary>
         private async Task SerialRead(byte[] data, int offset, int count)
         {
-            await SerialRead(data, offset, count, 1000);
+            await this.SerialRead(data, offset, count, 1000);
         }
 
-        /* read 'length' number of bytes from serial port */
+        /// <summary>
+        /// Read 'length' number of bytes from serial port.
+        /// </summary>
         private async Task SerialRead(byte[] data, int offset, int count, int timeout)
         {
-            /* shorter name */
-            var bs = sp.BaseStream;
-            /* number of bytes read */
-            int br = 0;
+            var baseStream = this.serialPort.BaseStream;
+            var bytesRead = 0;
 
-            /* read until all bytes are fetched from serial port */
-            while (br < count) {
-                /* this try is for timeout handling */
-                try {
-                    /* prepare task */
-                    br += await bs.ReadAsync(data, offset + br, count - br).
+            // read until all bytes are fetched from serial port
+            while (bytesRead < count)
+            {
+                // this try is for timeout handling
+                try
+                {
+                    // prepare task
+                    bytesRead += await baseStream.ReadAsync(data, offset + bytesRead, count - bytesRead).
                         WithTimeout(timeout);
-                /* got handling? */
-                } catch (OperationCanceledException) {
-                    /* rethrow */
+                }
+                catch (OperationCanceledException)
+                {
                     throw new STBootException("Timeout");
                 }
             }
