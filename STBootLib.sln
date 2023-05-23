@@ -1,15 +1,16 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio Version 16
-VisualStudioVersion = 16.0.33529.622
+# Visual Studio Version 17
+VisualStudioVersion = 17.5.33627.172
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "STBootLib", "STBootLib\STBootLib.csproj", "{8EC66A52-5978-481D-A80D-D75CBC6DE918}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "STBootLib", "STBootLib\STBootLib.csproj", "{8EC66A52-5978-481D-A80D-D75CBC6DE918}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "STM32 Flash Loader", "STM32 Flash Loader\STM32 Flash Loader.csproj", "{F2A80228-9234-4748-A61B-F26D3C1EC7FA}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{FAE52745-75CB-456E-858F-A76DE0588C05}"
 	ProjectSection(SolutionItems) = preProject
 		.editorconfig = .editorconfig
+		appveyor.yml = appveyor.yml
 		stylecop.json = stylecop.json
 	EndProjectSection
 EndProject
