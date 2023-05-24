@@ -28,7 +28,7 @@
     <Copyright>Copyright © M&amp;F Engineering AG 2023</Copyright>
     <RepositoryType>Git</RepositoryType>
     <RepositoryUrl>https://github.com/M-F-Engineering-AG/STBootLib</RepositoryUrl>
-    <PackageProjectUrl></PackageProjectUrl>
+    <PackageProjectUrl>https://www.nuget.org/packages/STBootLib/</PackageProjectUrl>
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
     <PackageLicenseFile></PackageLicenseFile>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
