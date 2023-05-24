@@ -2,15 +2,37 @@
 
   <PropertyGroup>
     <TargetFramework>netstandard2.0</TargetFramework>
-    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
-    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <LangVersion>latest</LangVersion>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
     <!--NoWarn:
     - SA1633: The file header is missing or not located at the top of the file
     - SA1649: File name should match first type name
     -->
     <NoWarn>$(NoWarn);SA1633;SA1649</NoWarn>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <VersionPrefix>1.0.0</VersionPrefix>
+    <!--Use VersionSuffix to define a pre-release version. e.g. <VersionSuffix>beta01</VersionSuffix>-->
+    <VersionSuffix>alpha</VersionSuffix>
+    <AssemblyVersion>$(Version)</AssemblyVersion>
+    <FileVersion>$(Version)</FileVersion>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <Authors>M&amp;F Engineering AG</Authors>
+    <Company>M&amp;F Engineering AG</Company>
+    <Description>C# library for communicating with STM32 USART (UART) On-Chip Bootloaders</Description>
+    <Copyright>Copyright © M&amp;F Engineering AG 2023</Copyright>
+    <RepositoryType>Git</RepositoryType>
+    <RepositoryUrl>https://github.com/M-F-Engineering-AG/STBootLib</RepositoryUrl>
+    <PackageProjectUrl></PackageProjectUrl>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <!--Attention:
+		- A property definition like <Version>1.0.0</Version> is not allowed here!
+		- All versions and their components must be declared in the PropertyGroup Version!!-->
   </PropertyGroup>
 
   <ItemGroup>
