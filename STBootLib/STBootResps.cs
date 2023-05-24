@@ -1,18 +1,17 @@
-﻿namespace STBootLib
+﻿namespace STBootLib;
+
+/// <summary>
+/// Response codes.
+/// </summary>
+public enum STResps
 {
     /// <summary>
-    /// Response codes.
+    /// command accepted.
     /// </summary>
-    public enum STResps
-    {
-        /// <summary>
-        /// command accepted.
-        /// </summary>
-        ACK = 0x79,
+    ACK = 0x79,
 
-        /// <summary>
-        /// command discarded.
-        /// </summary>
-        NACK = 0x1F,
-    }
+    /// <summary>
+    /// command discarded.
+    /// </summary>
+    NACK = 0x1F,
 }
