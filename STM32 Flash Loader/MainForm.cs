@@ -1,10 +1,11 @@
 ﻿using System;
+using System.IO;
+using System.IO.Ports;
+using System.Media;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
-using System.IO.Ports;
-using System.IO;
-using System.Threading;
-using System.Media;
+
 using STBootLib;
 
 namespace STUploader
@@ -23,6 +24,9 @@ namespace STUploader
         private uint address;
         private uint page;
 
+        /// <summary>
+        /// Initializes a new instance of the <see cref="MainForm"/> class.
+        /// </summary>
         public MainForm()
         {
             this.InitializeComponent();
@@ -229,17 +233,14 @@ namespace STUploader
             {
                 SystemSounds.Exclamation.Play();
             }
-
         }
 
         private void cbxErase_CheckedChanged(object sender, EventArgs e)
         {
-
         }
 
         private void cbPSize_SelectedIndexChanged(object sender, EventArgs e)
         {
-
         }
     }
 }
