@@ -43,9 +43,7 @@ jobs:
     - name: Sets env vars for final
       if: ${{ inputs.release-type == 'final'}}
       run: |
-        echo "VERSIONSUFFIX=''" >> $GITHUB_ENV
-        git tag "$MAJOR.$MINOR.$PATCH-$GITHUB_RUN_ID.$GITHUB_RUN_ATTEMPT"
-        git push origin ${{github.run_id}}
+        echo "VERSIONSUFFIX=" >> $GITHUB_ENV
 
     - name: Sets env vars for pre-release
       if: ${{ inputs.release-type == '' || inputs.release-type == 'pre-release'}} 
